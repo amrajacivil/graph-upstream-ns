@@ -11,4 +11,4 @@ This repository provides a setup for extracting, transforming, and loading data 
 
 ## Setup Instructions
 
-For detailed steps to set up and run this project locally, please refer to the `Instructions.md` file in the repository.
+For detailed steps to set up and run this project locally, please refer to the [`Instructions.md`](./Instructions.md) file in the same directory.
