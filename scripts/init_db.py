@@ -35,6 +35,8 @@ def remove_all_occurrences(lst: List[Any], value: Any) -> List[Any]:
     """Remove all occurrences of value from the list lst."""
     return [x for x in lst if x != value]
 
+def unique_non_missing(series):
+    return series[series != MISSING_VALUE].unique().tolist()
 
 def get_properties(df: pd.DataFrame, items: List[str], key_col: str, property_columns: List[str]) -> List[Dict[str, Any]]:
     """Extract properties for each item in items from df."""
@@ -50,25 +52,31 @@ def get_properties(df: pd.DataFrame, items: List[str], key_col: str, property_co
 
 def get_well_properties(df: pd.DataFrame, wells: List[str], property_columns: List[str]) -> List[Dict[str, Any]]:
     """Extract well properties for each well name."""
+    # Filter only rows where wlbWell is in wells
+    filtered = df[df['wlbWell'].isin(wells)]
+    # Drop duplicates to get one row per well (keep first occurrence)
+    deduped = filtered.drop_duplicates(subset=['wlbWell'])
+    # Build the list of dicts
     output = []
-    for item in tqdm(wells, desc="Processing Wells"):
-        records = df.loc[(df['wlbWellboreName'] == item) & (df['wlbWell'] == item)].to_dict('records')
-        if records:
-            selected = {k: records[0][k] for k in property_columns if k in records[0]}
-            selected["name"] = item
-            output.append(selected)
+    for _, row in tqdm(deduped.iterrows(), total=deduped.shape[0], desc="Processing Wells"):
+        selected = {k: row[k] for k in property_columns if k in row}
+        selected["name"] = row['wlbWell']
+        output.append(selected)
     return output
 
 
 def get_wellbore_properties(df: pd.DataFrame, wellbores: List[str], property_columns: List[str]) -> List[Dict[str, Any]]:
     """Extract wellbore properties for each wellbore name."""
-    output = []
-    for item in tqdm(wellbores, desc="Processing Wellbores"):
-        record = df.loc[df['wlbWellboreName'] == item].to_dict('records')
-        if record:
-            selected = {k: record[0][k] for k in property_columns if k in record[0]}
-            selected["name"] = item
-            output.append(selected)
+    # Filter rows where wlbWellboreName is in the wellbores list
+    filtered_df = df[df['wlbWellboreName'].isin(wellbores)]
+    # Drop duplicates to ensure one row per wellbore
+    deduped_df = filtered_df.drop_duplicates(subset=['wlbWellboreName'])
+    # Select only the required columns
+    selected_df = deduped_df[['wlbWellboreName'] + property_columns]
+    # Rename 'wlbWellboreName' to 'name' for the output
+    selected_df = selected_df.rename(columns={'wlbWellboreName': 'name'})
+    # Convert the dataframe to a list of dictionaries
+    output = selected_df.to_dict('records')
     return output
 
 
@@ -89,7 +97,7 @@ def main() -> None:
         'prlOriginalArea', 'prlCurrentArea', 'prlPhaseCurrent', 'prlFactPageUrl'
     ]
     license_df = fill_and_strip(license_df)
-    licenses = remove_all_occurrences(list(license_df['prlName'].unique()), MISSING_VALUE)
+    licenses = unique_non_missing(license_df['prlName'])
     licenses_with_properties = get_properties(license_df, licenses, 'prlName', license_properties_columns)
 
     # Field
@@ -109,9 +117,9 @@ def main() -> None:
     ]
     field_df = field_df[field_useful_columns].rename(columns=field_rename_mapping)
     field_df = fill_and_strip(field_df)
-    fields = remove_all_occurrences(list(field_df['fldName'].unique()), MISSING_VALUE)
+    fields = unique_non_missing(field_df['fldName'])
     fields_with_properties = get_properties(field_df, fields, 'fldName', field_properties_columns)
-    supply_bases = remove_all_occurrences(list(field_df['fldMainSupplyBase'].unique()), MISSING_VALUE)
+    supply_bases = unique_non_missing(field_df['fldMainSupplyBase'])
 
     # Well
     well_path = os.path.join(CSV_DIR, "wellbore_all_long.csv")
@@ -133,20 +141,22 @@ def main() -> None:
     ]
     well_rename_mapping = {
         "wlbNsDecDeg": "latitude",
-        "wlbEwDecDeg": "longitude"
+        "wlbEwDecDeg": "longitude",
+        "wlbMaxInclation":"wlbMaxInclination"
     }
     well_df = wlb_df[useful_columns].rename(columns=well_rename_mapping)
     well_df = fill_and_strip(well_df)
-    areas = remove_all_occurrences(list(well_df['wlbMainArea'].unique()), MISSING_VALUE)
-    field_names = remove_all_occurrences(list(well_df['wlbField'].unique()), MISSING_VALUE)
-    discoveries = remove_all_occurrences(list(well_df['wlbDiscovery'].unique()), MISSING_VALUE)
-    wells = remove_all_occurrences(list(well_df['wlbWell'].unique()), MISSING_VALUE)
+    
+
+    areas = unique_non_missing(well_df['wlbMainArea'])
+    discoveries = unique_non_missing(well_df['wlbDiscovery'])
+    wells = unique_non_missing(well_df['wlbWell'])
     wells_with_properties = get_well_properties(well_df, wells, properties_columns)
-    wellbores = remove_all_occurrences(list(well_df['wlbWellboreName'].unique()), MISSING_VALUE)
+    wellbores = unique_non_missing(well_df['wlbWellboreName'])
     wellbore_with_properties = get_wellbore_properties(well_df, wellbores, properties_columns)
-    drilling_facilities = remove_all_occurrences(list(well_df['wlbDrillingFacility'].unique()), MISSING_VALUE)
-    facilities = remove_all_occurrences(list(well_df['wlbFacilityTypeDrilling'].unique()), MISSING_VALUE)
-    operators = remove_all_occurrences(list(well_df['wlbDrillingOperator'].unique()), MISSING_VALUE)
+    drilling_facilities = unique_non_missing(well_df['wlbDrillingFacility'])
+    facilities = unique_non_missing(well_df['wlbFacilityTypeDrilling'])
+    operators = unique_non_missing(well_df['wlbDrillingOperator'])
 
     print("Data loaded and cleaned successfully.")
 
@@ -163,23 +173,47 @@ def main() -> None:
         handler.create_nodes_with_props("Field", fields_with_properties)
         handler.create_nodes("Base", supply_bases, property_key="name")
 
-        # Relationships for wells
-        missed_indexes = []
-        for index, row in tqdm(well_df.iterrows(), total=well_df.shape[0], desc="Creating Well Relationships"):
-            try:
-                
-                handler.create_edge("Area", "name", row["wlbMainArea"], "License", "name", row['wlbProductionLicence'], "HAS_LICENSE")
-                handler.create_edge("License", "name", row["wlbProductionLicence"], "Field", "name", row['wlbField'], "HAS_FIELD")
-                handler.create_edge("Field", "name", row["wlbField"], "Discovery", "name", row['wlbDiscovery'], "HAS_DISCOVERY")
-                handler.create_edge("Discovery", "name", row["wlbField"], "Well", "name", row['wlbWell'], "HAS_WELL")
-                handler.create_edge("Well", "name", row["wlbWell"], "Wellbore", "name", row['wlbWellboreName'], "HAS_WELLBORE")
-                handler.create_edge("Wellbore", "name", row["wlbWellboreName"], "DrillingFacility", "name", row['wlbDrillingFacility'], "HAS_DRILLING_FACILITY")
-                handler.create_edge("Wellbore", "name", row["wlbWellboreName"], "FacilityType", "name", row['wlbFacilityTypeDrilling'], "HAS_FACILITY_TYPE_OF")
-                handler.create_edge("Wellbore", "name", row["wlbWellboreName"], "Operator", "name", row['wlbDrillingOperator'], "WAS_OPERATED_BY")
-            except Exception as err:
-                traceback.print_exc()
-                print(f"Error occurred in index {index}: {err}")
-                missed_indexes.append(index)
+        well_relationships = []
+        for _, row in tqdm(well_df.iterrows(), total=well_df.shape[0], desc="Preparing Well Relationships"):
+            well_relationships.append({
+                "wlbMainArea": row["wlbMainArea"],
+                "wlbProductionLicence": row["wlbProductionLicence"],
+                "wlbField": row["wlbField"],
+                "wlbDiscovery": row["wlbDiscovery"],
+                "wlbWell": row["wlbWell"],
+                "wlbWellboreName": row["wlbWellboreName"],
+                "wlbDrillingFacility": row["wlbDrillingFacility"],
+                "wlbFacilityTypeDrilling": row["wlbFacilityTypeDrilling"],
+                "wlbDrillingOperator": row["wlbDrillingOperator"]
+            })
+
+        cypher = '''
+        UNWIND $rows AS row
+        MERGE (a:Area {name: row.wlbMainArea})
+        MERGE (l:License {name: row.wlbProductionLicence})
+        MERGE (f:Field {name: row.wlbField})
+        MERGE (d:Discovery {name: row.wlbDiscovery})
+        MERGE (w:Well {name: row.wlbWell})
+        MERGE (wb:Wellbore {name: row.wlbWellboreName})
+        MERGE (df:DrillingFacility {name: row.wlbDrillingFacility})
+        MERGE (ft:FacilityType {name: row.wlbFacilityTypeDrilling})
+        MERGE (op:Operator {name: row.wlbDrillingOperator})
+        MERGE (a)-[:HAS_LICENSE]->(l)
+        MERGE (l)-[:HAS_FIELD]->(f)
+        MERGE (f)-[:HAS_DISCOVERY]->(d)
+        MERGE (d)-[:HAS_WELL]->(w)
+        MERGE (w)-[:HAS_WELLBORE]->(wb)
+        MERGE (wb)-[:HAS_DRILLING_FACILITY]->(df)
+        MERGE (wb)-[:HAS_FACILITY_TYPE_OF]->(ft)
+        MERGE (wb)-[:WAS_OPERATED_BY]->(op)
+        '''
+        try:
+            with handler.driver.session() as session:
+                session.run(cypher, rows=well_relationships)
+            print(f"Batch created {len(well_relationships)} well relationships.")
+        except Exception as err:
+            traceback.print_exc()
+            print(f"Error occurred during batch well relationship creation: {err}")
 
         # Relationships for fields
         for index, row in tqdm(field_df.iterrows(), total=field_df.shape[0], desc="Creating Field Relationships"):

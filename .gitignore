@@ -210,3 +210,5 @@ db/data/*
 !db/data/.gitkeep
 db/logs/*
 !db/logs/.gitkeep
+
+scripts/analysis.ipynb
