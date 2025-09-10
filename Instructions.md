@@ -46,18 +46,33 @@ Once the services are running, you have two options:
 
 ## Example Cypher Query
 
-You can try the following query to find "Extreme Subsea wells":
+1. Short supply-chain paths between Areas and Operators
 
 ```
-WITH "Equinor Energy AS" as operator_name, 2020 as cutOffYear, 3500 as kickOffThreshold
-MATCH (op:Operator {name: operator_name })
-MATCH (wb:Wellbore)-[r1:WAS_OPERATED_BY]->(op)
-WHERE wb.wlbEntryYear >= cutOffYear
-	AND wb.wlbKickOffPoint > kickOffThreshold
-	AND wb.wlbSubSea = "YES"
-OPTIONAL MATCH (df:DrillingFacility)-[r2:HAS_WELL]->(wb)
-OPTIONAL MATCH (wb)-[r3:HAS_FACILITY_TYPE_OF]->(ft:FacilityType)
-RETURN wb, r1, r2, r3, df;
+// find example shortest connections between any Area and any Operator (path length limited to 4 for clarity)
+MATCH (a:Area), (op:Operator)
+WHERE a.name IS NOT NULL AND op.name IS NOT NULL
+MATCH p = shortestPath((a)-[*..4]-(op))
+RETURN p
+LIMIT 25;
+
+```
+
+2. Recent producing wells with high kickoff depth (Area → … → Wellbore view)
+
+```
+MATCH path = (area:Area)-[:HAS_LICENSE]->(:License)-[:HAS_FIELD]->(:Field)-[:HAS_DISCOVERY]->(:Discovery)
+             -[:HAS_WELL]->(w:Well)-[:HAS_WELLBORE]->(wb:Wellbore)
+WHERE wb.wlbKickOffPoint IS NOT NULL
+  AND toFloat(wb.wlbKickOffPoint) > 2500.0
+  AND wb.wlbEntryYear IS NOT NULL
+  AND toInteger(wb.wlbEntryYear) >= 2025
+  AND (wb.wlbStatus = 'PRODUCING' OR w.wlbStatus = 'Producing')
+OPTIONAL MATCH (wb)-[:WAS_OPERATED_BY]->(op:Operator)
+OPTIONAL MATCH (wb)-[:HAS_DRILLING_FACILITY]->(df:DrillingFacility)
+RETURN DISTINCT path, op, df
+LIMIT 25;
+
 ```
 
 Feel free to play around with your own queries!
