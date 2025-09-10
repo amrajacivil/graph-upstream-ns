@@ -10,7 +10,7 @@ The CSV files in the `csvs` folder were downloaded from [Sodir Factpages Wellbor
 
 ## Running the Project
 
-Open a terminal (cmd/bash/zsh) in this folder and run:
+Open a terminal (bash/zsh) in this folder and run:
 
 ```
 docker compose up
@@ -26,7 +26,7 @@ docker compose up --detach
 
 **First time setup:**
 
-- Please wait **10 minutes** after starting. This allows time for nodes and relationships to be created in the database.
+- Please wait **3 minutes** after starting. This allows time for nodes and relationships to be created in the database.
 - On subsequent runs, the services should start almost immediately.
 
 ## Accessing Neo4j
